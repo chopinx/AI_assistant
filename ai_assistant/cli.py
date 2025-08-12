@@ -151,7 +151,9 @@ Return STRICT JSON:
 Use only tools listed in tool_catalog. Keep args minimal.
 """
 
-SYSTEM_FINALIZER = """Write a concise summary of what was done and any changes, using the observations. Return STRICT JSON:
+SYSTEM_FINALIZER = """Write a concise summary of what was done and any changes, using the observations. 
+For lists of events or items, use newlines (\\n) to separate them for better readability.
+Return STRICT JSON:
 { "message": "..." }"""
 
 # ----- Orchestrator: stepwise with latest observations every turn -----

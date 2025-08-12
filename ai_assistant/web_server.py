@@ -11,7 +11,7 @@ import os
 from ai_assistant.core.logging import get_logger
 
 # Import the existing assistant logic
-from ai_assistant.cli import run, Tools, CALENDAR_APP_AVAILABLE, MAIL_APP_AVAILABLE
+from ai_assistant.cli import Tools, CALENDAR_APP_AVAILABLE, MAIL_APP_AVAILABLE
 from ai_assistant.cli import calendar_client, mail_client
 from ai_assistant.core.context import get_context_for_ai
 
@@ -46,12 +46,19 @@ class WebAssistant:
         return status
     
     def process_message(self, message, session_id):
-        """Process user message and return response"""
+        """Process user message and return response with progress updates"""
         try:
             logger.info(f"Processing message from session {session_id}: {message}")
             
-            # Run the assistant logic
-            result = run(message)
+            # Create progress callback to emit real-time updates
+            def progress_callback(event_type, data):
+                emit('progress_update', {
+                    'type': event_type,
+                    'data': data
+                }, room=session_id)
+            
+            # Run the assistant logic with progress tracking
+            result = self._run_with_progress(message, progress_callback)
             
             response = {
                 "success": True,
@@ -89,6 +96,104 @@ class WebAssistant:
                 "summary": f"Sorry, I encountered an error: {str(e)}",
                 "actions": []
             }
+    
+    def _run_with_progress(self, goal, progress_callback):
+        """Enhanced run function with progress updates"""
+        import os
+        from anthropic import Anthropic
+        from ai_assistant.cli import safe_json, llm, SYSTEM_ONE_STEP, SYSTEM_FINALIZER, Tools
+        from ai_assistant.core.context import get_context_for_ai
+        import json
+        
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY environment variable is required")
+        
+        client = Anthropic(api_key=api_key)
+        tools = Tools()
+        observations = []
+        max_steps = 12
+        
+        progress_callback('thinking', {'message': 'Understanding your request...'})
+        
+        for step_num in range(max_steps):
+            # Update progress for AI thinking
+            progress_callback('thinking', {
+                'message': f'Planning step {step_num + 1}...',
+                'step': step_num + 1,
+                'max_steps': max_steps
+            })
+            
+            # Create view with minimal context
+            context_info = get_context_for_ai()
+            view = {"goal": goal, "tool_catalog": tools.catalog, "observations": observations}
+            
+            # Get step from AI
+            system_prompt = SYSTEM_ONE_STEP.format(system_context=context_info)
+            step = safe_json(llm(client, system_prompt, view))
+            logger.debug(f"Step: {json.dumps(step, indent=2)}")
+
+            # Handle direct finalize response
+            if step.get("type") == "finalize":
+                progress_callback('finalizing', {'message': 'Completing task...'})
+                return {"summary": step["message"], "observations": observations}
+
+            # Check if we should finalize
+            if step.get("next", {}).get("type") == "finalize":
+                progress_callback('finalizing', {'message': 'Generating final response...'})
+                final = safe_json(llm(client, SYSTEM_FINALIZER, {"goal": goal, "observations": observations}))
+                return {"summary": final["message"], "observations": observations}
+
+            # Execute tool if needed
+            if "next" in step and step["next"].get("name"):
+                tool_name = step["next"]["name"]
+                tool_args = step["next"].get("args", {})
+                
+                progress_callback('tool_execution', {
+                    'message': f'Executing {tool_name}...',
+                    'tool': tool_name,
+                    'args': tool_args
+                })
+                
+                # Execute the tool
+                try:
+                    result = tools.call(tool_name, tool_args)
+                    observations.append({
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "ok": True,
+                        "data": result
+                    })
+                    
+                    progress_callback('tool_completed', {
+                        'message': f'Completed {tool_name}',
+                        'tool': tool_name,
+                        'success': True
+                    })
+                    
+                except Exception as e:
+                    observations.append({
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "ok": False,
+                        "error": str(e)
+                    })
+                    
+                    progress_callback('tool_error', {
+                        'message': f'Error in {tool_name}: {str(e)}',
+                        'tool': tool_name,
+                        'success': False,
+                        'error': str(e)
+                    })
+            else:
+                logger.warning(f"No 'next' key in step: {step}")
+                progress_callback('error', {'message': 'AI response was incomplete'})
+                return {"summary": "Invalid response from AI - missing action", "observations": observations}
+        
+        # If we reach here, we've hit max steps
+        progress_callback('finalizing', {'message': 'Reached maximum steps, generating response...'})
+        final = safe_json(llm(client, SYSTEM_FINALIZER, {"goal": goal, "observations": observations}))
+        return {"summary": final["message"], "observations": observations}
     
     def _format_tool_result(self, tool, data):
         """Format tool results for display"""
@@ -190,11 +295,11 @@ def handle_message(data):
     # Echo the user message
     emit('user_message', {'message': message})
     
-    # Show typing indicator
+    # Show typing indicator briefly
     emit('assistant_typing', {'typing': True})
     
     try:
-        # Process the message
+        # Process the message (this will emit progress updates)
         response = assistant.process_message(message, session_id)
         
         # Send the response
@@ -204,341 +309,18 @@ def handle_message(data):
     except Exception as e:
         logger.error(f"Error handling message: {e}")
         emit('assistant_typing', {'typing': False})
+        emit('progress_update', {
+            'type': 'error',
+            'data': {'message': f'Error: {str(e)}'}
+        })
         emit('assistant_message', {
             'success': False,
             'summary': 'Sorry, I encountered an error processing your message.',
             'actions': []
         })
 
-def create_templates_dir():
-    """Create templates directory and HTML file"""
-    templates_dir = os.path.join(os.path.dirname(__file__), 'web', 'templates')
-    os.makedirs(templates_dir, exist_ok=True)
-    
-    html_content = '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Assistant</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        
-        .container {
-            width: 90%;
-            max-width: 800px;
-            height: 90vh;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-        
-        .header {
-            background: #2c3e50;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            position: relative;
-        }
-        
-        .header h1 {
-            font-size: 24px;
-            margin-bottom: 10px;
-        }
-        
-        .status {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            font-size: 14px;
-        }
-        
-        .status-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        .status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #27ae60;
-        }
-        
-        .status-indicator.disabled {
-            background: #e74c3c;
-        }
-        
-        .chat-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        
-        .message {
-            max-width: 80%;
-            padding: 12px 16px;
-            border-radius: 18px;
-            word-wrap: break-word;
-        }
-        
-        .user-message {
-            align-self: flex-end;
-            background: #007AFF;
-            color: white;
-        }
-        
-        .assistant-message {
-            align-self: flex-start;
-            background: #f1f1f1;
-            color: #333;
-        }
-        
-        .assistant-message.error {
-            background: #ffebee;
-            color: #c62828;
-        }
-        
-        .actions {
-            margin-top: 10px;
-            font-size: 14px;
-        }
-        
-        .action-item {
-            margin: 5px 0;
-            padding: 8px 12px;
-            background: #e8f5e8;
-            border-radius: 8px;
-            border-left: 3px solid #4caf50;
-        }
-        
-        .action-item.error {
-            background: #ffebee;
-            border-left-color: #f44336;
-        }
-        
-        .typing-indicator {
-            align-self: flex-start;
-            background: #f1f1f1;
-            color: #666;
-            font-style: italic;
-            animation: pulse 1.5s infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 0.7; }
-            50% { opacity: 1; }
-        }
-        
-        .input-container {
-            padding: 20px;
-            background: #f8f9fa;
-            border-top: 1px solid #e9ecef;
-        }
-        
-        .input-form {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .message-input {
-            flex: 1;
-            padding: 12px 16px;
-            border: 2px solid #e9ecef;
-            border-radius: 25px;
-            font-size: 16px;
-            outline: none;
-            transition: border-color 0.3s;
-        }
-        
-        .message-input:focus {
-            border-color: #007AFF;
-        }
-        
-        .send-button {
-            padding: 12px 24px;
-            background: #007AFF;
-            color: white;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background 0.3s;
-        }
-        
-        .send-button:hover {
-            background: #0056b3;
-        }
-        
-        .send-button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🤖 AI Assistant</h1>
-            <div class="status" id="status">
-                <div class="status-item">
-                    <div class="status-indicator disabled" id="calendar-status"></div>
-                    <span>Calendar</span>
-                </div>
-                <div class="status-item">
-                    <div class="status-indicator disabled" id="mail-status"></div>
-                    <span>Email</span>
-                </div>
-            </div>
-        </div>
-        
-        <div class="chat-container" id="chat">
-            <div class="message assistant-message">
-                👋 Hi! I'm your AI assistant. I can help you manage your calendar events and emails. Try asking me something like:
-                <ul style="margin-top: 10px; padding-left: 20px;">
-                    <li>"Show my events for next week"</li>
-                    <li>"Send an email to john@example.com"</li>
-                    <li>"Create a meeting tomorrow at 2pm"</li>
-                </ul>
-            </div>
-        </div>
-        
-        <div class="input-container">
-            <form class="input-form" id="messageForm">
-                <input type="text" class="message-input" id="messageInput" 
-                       placeholder="Type your message..." autocomplete="off">
-                <button type="submit" class="send-button" id="sendButton">Send</button>
-            </form>
-        </div>
-    </div>
-
-    <script>
-        const socket = io();
-        const chat = document.getElementById('chat');
-        const messageForm = document.getElementById('messageForm');
-        const messageInput = document.getElementById('messageInput');
-        const sendButton = document.getElementById('sendButton');
-        
-        let typingIndicator = null;
-        
-        // Auto-scroll to bottom
-        function scrollToBottom() {
-            chat.scrollTop = chat.scrollHeight;
-        }
-        
-        // Add message to chat
-        function addMessage(content, className) {
-            const message = document.createElement('div');
-            message.className = `message ${className}`;
-            message.innerHTML = content;
-            chat.appendChild(message);
-            scrollToBottom();
-            return message;
-        }
-        
-        // Show/hide typing indicator
-        function showTyping(show) {
-            if (show && !typingIndicator) {
-                typingIndicator = addMessage('Assistant is typing...', 'typing-indicator');
-            } else if (!show && typingIndicator) {
-                typingIndicator.remove();
-                typingIndicator = null;
-            }
-        }
-        
-        // Update status indicators
-        function updateStatus(status) {
-            const calendarStatus = document.getElementById('calendar-status');
-            const mailStatus = document.getElementById('mail-status');
-            
-            calendarStatus.className = status.calendar.available ? 
-                'status-indicator' : 'status-indicator disabled';
-            mailStatus.className = status.mail.available ? 
-                'status-indicator' : 'status-indicator disabled';
-        }
-        
-        // Socket event handlers
-        socket.on('connect', function() {
-            console.log('Connected to server');
-        });
-        
-        socket.on('status_update', function(status) {
-            updateStatus(status);
-        });
-        
-        socket.on('user_message', function(data) {
-            addMessage(data.message, 'user-message');
-        });
-        
-        socket.on('assistant_typing', function(data) {
-            showTyping(data.typing);
-        });
-        
-        socket.on('assistant_message', function(data) {
-            let content = data.summary;
-            
-            if (data.actions && data.actions.length > 0) {
-                content += '<div class="actions">';
-                data.actions.forEach(action => {
-                    const actionClass = action.success ? 'action-item' : 'action-item error';
-                    content += `<div class="${actionClass}">• ${action.message}</div>`;
-                });
-                content += '</div>';
-            }
-            
-            const className = data.success ? 'assistant-message' : 'assistant-message error';
-            addMessage(content, className);
-        });
-        
-        // Form submission
-        messageForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const message = messageInput.value.trim();
-            
-            if (message) {
-                socket.emit('send_message', { message: message });
-                messageInput.value = '';
-                sendButton.disabled = true;
-                setTimeout(() => { sendButton.disabled = false; }, 1000);
-            }
-        });
-        
-        // Auto-focus input
-        messageInput.focus();
-    </script>
-</body>
-</html>
-    '''
-    
-    with open(os.path.join(templates_dir, 'index.html'), 'w') as f:
-        f.write(html_content)
 
 if __name__ == '__main__':
-    # Create templates directory
-    create_templates_dir()
-    
     logger.info("Starting AI Assistant Web UI")
     logger.info("Calendar integration: " + ("✅" if CALENDAR_APP_AVAILABLE else "❌"))
     logger.info("Mail integration: " + ("✅" if MAIL_APP_AVAILABLE else "❌"))
