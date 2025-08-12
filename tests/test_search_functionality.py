@@ -6,10 +6,10 @@ Tests the new "search all" and "list all" functionality that aggregates results
 from multiple calendars and email accounts.
 """
 
-from src.integrations.calendar_client import MacCalendarClient, MacCalendarTools
-from src.integrations.mail_client import MacMailClient, MacMailTools
+from ai_assistant.integrations.calendar_client import MacCalendarClient, MacCalendarTools
+from ai_assistant.integrations.mail_client import MacMailClient, MacMailTools
 import json
-from src.core.logging import get_logger
+from ai_assistant.core.logging import get_logger
 
 logger = get_logger('test_consolidated')
 

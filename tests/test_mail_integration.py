@@ -5,9 +5,9 @@ Test Mac Mail.app Integration
 This script tests the Mac Mail.app client functionality.
 """
 
-from src.integrations.mail_client import MacMailClient, MacMailTools
+from ai_assistant.integrations.mail_client import MacMailClient, MacMailTools
 import json
-from src.core.logging import get_logger
+from ai_assistant.core.logging import get_logger
 
 logger = get_logger('test_mail')
 

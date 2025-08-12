@@ -4,14 +4,14 @@ import json, datetime as dt, os
 from anthropic import Anthropic
 
 # ----- Logging configuration -----
-from src.core.logging import setup_logging
-from src.core.context import get_context_for_ai, get_full_context_data
+from ai_assistant.core.logging import setup_logging
+from ai_assistant.core.context import get_context_for_ai, get_full_context_data
 
 logger = setup_logging('ai_assistant')
 
 # ----- Mac Calendar.app integration -----
 try:
-    from src.integrations.calendar_client import MacCalendarClient, MacCalendarTools
+    from ai_assistant.integrations.calendar_client import MacCalendarClient, MacCalendarTools
     calendar_client = MacCalendarClient()
     calendar_tools = MacCalendarTools(calendar_client)
     CALENDAR_APP_AVAILABLE = True
@@ -21,7 +21,7 @@ except Exception as e:
 
 # ----- Mac Mail.app integration -----
 try:
-    from src.integrations.mail_client import MacMailClient, MacMailTools
+    from ai_assistant.integrations.mail_client import MacMailClient, MacMailTools
     mail_client = MacMailClient()
     mail_tools = MacMailTools(mail_client)
     MAIL_APP_AVAILABLE = True

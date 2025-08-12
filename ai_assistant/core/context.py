@@ -11,7 +11,7 @@ import platform
 import os
 import socket
 from typing import Dict, Any
-from src.core.logging import get_logger
+from ai_assistant.core.logging import get_logger
 
 logger = get_logger('system_context')
 

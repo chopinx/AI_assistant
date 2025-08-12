@@ -8,12 +8,12 @@ A modern web interface for the AI assistant with real-time chat.
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 import os
-from src.core.logging import get_logger
+from ai_assistant.core.logging import get_logger
 
 # Import the existing assistant logic
-from src.cli import run, Tools, CALENDAR_APP_AVAILABLE, MAIL_APP_AVAILABLE
-from src.cli import calendar_client, mail_client
-from src.core.context import get_context_for_ai
+from ai_assistant.cli import run, Tools, CALENDAR_APP_AVAILABLE, MAIL_APP_AVAILABLE
+from ai_assistant.cli import calendar_client, mail_client
+from ai_assistant.core.context import get_context_for_ai
 
 # Setup logging for web UI
 logger = get_logger('web_ui')

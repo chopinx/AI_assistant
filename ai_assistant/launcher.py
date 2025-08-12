@@ -9,14 +9,14 @@ import subprocess
 import time
 import webbrowser
 import threading
-from src.core.logging import get_logger
+from ai_assistant.core.logging import get_logger
 
 logger = get_logger('start_ui')
 
 def start_web_server():
     """Start the web server"""
     try:
-        subprocess.run(['python', 'src/web_server.py'], check=True)
+        subprocess.run(['python', '-m', 'ai_assistant.web_server'], check=True)
     except KeyboardInterrupt:
         print("\nShutting down AI Assistant...")
     except Exception as e:

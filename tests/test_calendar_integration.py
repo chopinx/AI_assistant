@@ -5,9 +5,9 @@ Test Mac Calendar.app Integration
 This script tests the Mac Calendar.app client functionality.
 """
 
-from src.integrations.calendar_client import MacCalendarClient, MacCalendarTools
+from ai_assistant.integrations.calendar_client import MacCalendarClient, MacCalendarTools
 import json
-from src.core.logging import get_logger
+from ai_assistant.core.logging import get_logger
 
 logger = get_logger('test_calendar')
 

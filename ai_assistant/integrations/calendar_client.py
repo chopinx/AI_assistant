@@ -4,7 +4,7 @@ import re
 import json
 import os
 from typing import Dict, Any, List, Optional
-from src.core.logging import get_logger
+from ai_assistant.core.logging import get_logger
 
 logger = get_logger("calendar_app")
 

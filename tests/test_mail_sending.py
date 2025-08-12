@@ -3,8 +3,8 @@
 Test Mail.app sending functionality
 """
 
-from src.integrations.mail_client import MacMailClient, MacMailTools
-from src.core.logging import get_logger
+from ai_assistant.integrations.mail_client import MacMailClient, MacMailTools
+from ai_assistant.core.logging import get_logger
 
 logger = get_logger('test_mail_send')
 
