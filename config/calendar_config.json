@@ -1,0 +1,26 @@
+{
+  "calendar_settings": {
+    "enabled_calendars": {
+      "Social & Events": true,
+      "Work": true
+    },
+    "disabled_calendars": [
+      "Holiday",
+      "Birthday",
+      "Siri Suggestions"
+    ],
+    "default_enabled": false,
+    "timeout_seconds": 5,
+    "skip_patterns": [
+      "Holiday",
+      "Birthday", 
+      "Siri"
+    ]
+  },
+  "notes": {
+    "enabled_calendars": "Specific calendar names mapped to true/false. Empty means use default_enabled",
+    "disabled_calendars": "Calendar names that are always disabled regardless of other settings",
+    "default_enabled": "Default state for calendars not explicitly configured",
+    "skip_patterns": "Calendar names containing these patterns will be skipped"
+  }
+}
