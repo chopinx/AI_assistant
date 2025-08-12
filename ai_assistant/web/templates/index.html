@@ -337,38 +337,50 @@
                 progressIndicator = null;
             }
             
-            // Create new progress indicator with simplified structure
+            // Build progress indicator using DOM elements to ensure text always appears
             const progressClass = `message progress-indicator ${type}`;
-            const spinner = '<div class="progress-spinner"></div>';
-            
-            let progressContent = `
-                <div class="progress-content">
-                    ${spinner}
-                    <span>${data.message || 'Processing...'}</span>
-                </div>
-            `;
-            
-            // Add progress bar for thinking steps
-            if (type === 'thinking' && data.step && data.max_steps) {
-                const progress = Math.round((data.step / data.max_steps) * 100);
-                progressContent += `
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${progress}%"></div>
-                    </div>
-                `;
-            }
-            
-            console.log('Creating progress with class:', progressClass);
-            console.log('Progress content:', progressContent);
-            
-            // Create the element directly instead of using addMessage
+            const msg = typeof data === 'string'
+                ? data
+                : (data && data.message)
+                    ? data.message
+                    : (type === 'thinking' ? 'Thinking...' : 'Processing...');
+
+            // Create container element
             const message = document.createElement('div');
             message.className = progressClass;
-            message.innerHTML = progressContent;
+
+            // Build content section
+            const content = document.createElement('div');
+            content.className = 'progress-content';
+
+            const spinner = document.createElement('div');
+            spinner.className = 'progress-spinner';
+            content.appendChild(spinner);
+
+            const textSpan = document.createElement('span');
+            textSpan.textContent = msg;
+            content.appendChild(textSpan);
+
+            message.appendChild(content);
+
+            // Add progress bar for thinking steps when progress info is available
+            if (type === 'thinking' && data && data.step && data.max_steps) {
+                const progress = Math.round((data.step / data.max_steps) * 100);
+                const bar = document.createElement('div');
+                bar.className = 'progress-bar';
+                const fill = document.createElement('div');
+                fill.className = 'progress-fill';
+                fill.style.width = `${progress}%`;
+                bar.appendChild(fill);
+                message.appendChild(bar);
+            }
+
+            console.log('Creating progress with class:', progressClass);
+
             chat.appendChild(message);
             scrollToBottom();
             progressIndicator = message;
-            
+
             console.log('Progress indicator created:', progressIndicator);
         }
         
